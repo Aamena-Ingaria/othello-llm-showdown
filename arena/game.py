@@ -3,6 +3,7 @@ from arena.player import Player
 from arena.record import get_games, Result, record_game, ratings
 from datetime import datetime
 from typing import List
+from arena.llm import LLM
 
 
 class Game:
@@ -54,9 +55,13 @@ class Game:
     @staticmethod
     def get_ratings():
         """
-        Return the ELO ratings of all players
+        Return the ELO ratings of all players - filter out any models that are not supported
         """
-        return ratings()
+        return {
+            model: rating
+            for model, rating in ratings().items()
+            if model in LLM.all_supported_model_names()
+        }
 
     def record(self):
         """

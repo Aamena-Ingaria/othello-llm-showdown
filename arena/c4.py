@@ -24,6 +24,8 @@ function refresh() {
 }
 """
 
+ALL_MODEL_NAMES = LLM.all_model_names()
+
 
 def message_html(game) -> str:
     """
@@ -181,11 +183,10 @@ def player_section(name, default):
     """
     Create the left and right sections of the UI
     """
-    all_model_names = LLM.all_model_names()
     with gr.Row():
         gr.HTML(f'<div style="text-align: center;font-size:18px">{name} Player</div>')
     with gr.Row():
-        dropdown = gr.Dropdown(all_model_names, value=default, label="LLM", interactive=True)
+        dropdown = gr.Dropdown(ALL_MODEL_NAMES, value=default, label="LLM", interactive=True)
     with gr.Row():
         gr.HTML('<div style="text-align: center;font-size:16px">Inner thoughts</div>')
     with gr.Row():
@@ -213,9 +214,7 @@ def make_display():
                     )
                 with gr.Row():
                     with gr.Column(scale=1):
-                        red_thoughts, red_dropdown = player_section(
-                            "Red", "openai/gpt-oss-120b via Groq"
-                        )
+                        red_thoughts, red_dropdown = player_section("Red", ALL_MODEL_NAMES[0])
                     with gr.Column(scale=2):
                         with gr.Row():
                             message = gr.HTML(
@@ -237,14 +236,14 @@ def make_display():
 
                     with gr.Column(scale=1):
                         yellow_thoughts, yellow_dropdown = player_section(
-                            "Yellow", "gemini-2.5-flash-lite"
+                            "Yellow", ALL_MODEL_NAMES[1]
                         )
             with gr.TabItem("Leaderboard") as leaderboard_tab:
                 with gr.Row():
                     with gr.Column(scale=1):
                         ratings_df = gr.Dataframe(
                             headers=["Player", "ELO"],
-                            label="Ratings",
+                            label="Ratings (recent models only)",
                             column_widths=[2, 1],
                             wrap=True,
                             col_count=2,

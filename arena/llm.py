@@ -6,6 +6,9 @@ import logging
 from typing import Dict, Type, Self, List
 import os
 import time
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -111,16 +114,24 @@ class LLM(ABC):
         return mapping
 
     @classmethod
+    def all_supported_model_names(cls) -> List[str]:
+        """
+        Return a list of all the model names supported by all subclasses of this one.
+        """
+        return list(cls.model_map().keys())
+
+    @classmethod
     def all_model_names(cls) -> List[str]:
         """
         Return a list of all the model names supported.
         Use the ones specified in the model_map, but also check if there's an env variable set that restricts the models
         """
-        models = list(cls.model_map().keys())
+        models = cls.all_supported_model_names()
         allowed = os.getenv("MODELS")
+        print(f"Allowed models: {allowed}")
         if allowed:
             allowed_models = allowed.split(",")
-            return [model for model in models if model in allowed_models]
+            return [model for model in allowed_models if model in models]
         else:
             return models
 
@@ -144,10 +155,9 @@ class Claude(LLM):
     """
 
     model_names = [
-        "claude-3-5-sonnet-latest",
-        "claude-3-7-sonnet-latest",
         "claude-opus-4-1-20250805",
-        "claude-sonnet-4-5-20250929",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
     ]
 
     def __init__(self, model_name: str, temperature: float):
@@ -182,7 +192,7 @@ class GPT(LLM):
     A class to act as an interface to the remote AI, in this case GPT
     """
 
-    model_names = ["gpt-4o-mini", "gpt-4o", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1-mini"]
+    model_names = ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -199,7 +209,7 @@ class O1(LLM):
     A class to act as an interface to the remote AI, in this case O1
     """
 
-    model_names = ["o1-mini"]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -231,7 +241,7 @@ class O3(LLM):
     A class to act as an interface to the remote AI, in this case O3
     """
 
-    model_names = ["o3-mini"]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -269,8 +279,6 @@ class Gemini(LLM):
     """
 
     model_names = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gemini-2.5-pro",
@@ -347,7 +355,7 @@ class DeepSeekLocal(LLM):
     A class to act as an interface to the remote AI, in this case Ollama via the OpenAI client
     """
 
-    model_names = ["deepseek-r1:14b local"]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -386,9 +394,6 @@ class GroqAPI(LLM):
     """
 
     model_names = [
-        "deepseek-r1-distill-llama-70b via Groq",
-        "llama-3.3-70b-versatile via Groq",
-        "mixtral-8x7b-32768 via Groq",
         "openai/gpt-oss-120b via Groq",
     ]
 
