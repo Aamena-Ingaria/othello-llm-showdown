@@ -1,83 +1,109 @@
----
-title: Othello Showdown
-emoji: ⚫
-colorFrom: green
-colorTo: green
-sdk: gradio
-app_file: app.py
-sdk_version: 5.15.0
-pinned: false
-python_version: 3.12
-license: mit
-short_description: Arena for playing Othello (Reversi) between LLMs
----
+# ⚔️ Othello (Reversi) LLM Arena
 
-# Othello (Reversi) LLM Arena
-
-### A battleground for pitting LLMs against each other in classic Othello (Reversi)
+### A battleground for pitting Large Language Models against each other in classic 8x8 Othello (Reversi)
 
 ![Othello](othello.png)
 
-It has been great fun making this Arena and watching LLMs duke it out!
+An interactive battle arena where AI models compete in the strategic board game **Othello (Reversi)**. Watch local LLMs analyze positions, calculate outflanks, avoid tactical traps, and explain their inner thoughts in real-time.
 
-Quick links:
-- The [Live Arena](https://edwarddonner.com/connect-four/)  courtesy of amazing HuggingFace Spaces
-- The [GitHub repo](https://github.com/ed-donner/connect) for the code
-- My [video walkthrough](https://youtu.be/0OF-ChlKOQY) of the code
-- My [LinkedIn](https://www.linkedin.com/in/eddonner/) - I love connecting!
+---
 
-If you'd like to learn more about this:  
-- I have a best-selling intensive 8-week [Mastering LLM engineering](https://www.udemy.com/course/llm-engineering-master-ai-and-large-language-models/?referralCode=35EB41EBB11DD247CF54) course that covers models and APIs, along with RAG, fine-tuning and Agents. 
-- I'm running a number of [Live Events](https://www.oreilly.com/search/?q=author%3A%20%22Ed%20Donner%22) with O'Reilly and Pearson
+## ✨ Features
 
-## Installing & Running with `uv`
+- **Classic 8x8 Othello Engine**: Full implementation of standard Reversi rules, disc outflanking and flipping in all 8 directions, pass turns, and disc count scoring.
+- **Rich SVG Board**: Dark green felt surface, coordinate markers (`A`–`H`, `1`–`8`), 3D radial-gradient Black & White discs, and golden pulse indicator for the latest move.
+- **LLM Inner Thoughts**: Inspect each model's live reasoning:
+  - **Evaluation**: Positional assessment and mobility control
+  - **Threats**: Opponent corners and dangerous flanks
+  - **Opportunities**: Strategic squares and stable discs
+  - **Strategy**: Tactical calculation and planned path
+- **100% Free, Private & Offline**: Powered by local models running via [Ollama](https://ollama.com). No paid API keys or external calls needed.
+- **ELO Ratings & History**: Built-in leaderboard tracking game outcomes and dynamic ELO ratings.
+- **Managed with `uv`**: Fast, modern virtual environment and dependency management.
 
-1. Clone the repo and enter directory:
-   ```bash
-   git clone https://github.com/ed-donner/connect.git
-   cd connect
-   ```
-2. Create the virtual environment and install dependencies with `uv`:
-   ```bash
-   uv venv --python 3.12
-   uv pip install -r requirements.txt
-   ```
-3. Launch the application:
-   ```bash
-   uv run app.py
-   ```
-   *(or run `./run.sh` in Git Bash, or `run.bat` in Windows CMD)*
+---
 
-## Running 100% Free with Local Ollama Models
+## 🚀 Getting Started
 
-No paid API keys are needed! The game runs completely offline using local models via [Ollama](https://ollama.com):
-- `llama3.2:3b`
-- `llama3.2:1b`
-- `qwen2.5-coder:7b` (or `qwen2.3-coder:7b`)
+### 1. Prerequisites
 
-### Quick Setup:
-1. Install Ollama from https://ollama.com
-2. Pull the models:
-   ```bash
-   ollama pull llama3.2:3b
-   ollama pull llama3.2:1b
-   ollama pull qwen2.5-coder:7b
-   ```
-3. Start the application:
-   - In Git Bash:
-     ```bash
-     ./run.sh
-     ```
-   - Or in Windows CMD / PowerShell:
-     ```cmd
-     run.bat
-     ```
-   - Or directly using your Python environment:
-     ```bash
-     /c/Users/Aamen/AIProjects/llm_engineering/.venv/Scripts/python.exe app.py
-     ```
-4. Open your browser to the local URL (usually `http://127.0.0.1:7860`) and enjoy!
+- **Python 3.12+**
+- **[uv](https://docs.astral.sh/uv/)** (recommended for package management)
+- **[Ollama](https://ollama.com)** (for running local models)
 
+### 2. Pull the Models
 
+Ensure Ollama is running, then pull the supported models:
 
+```bash
+ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+ollama pull qwen2.5-coder:7b
+```
 
+### 3. Installation & Setup with `uv`
+
+Initialize the environment and install dependencies:
+
+```bash
+uv venv --python 3.12
+uv pip install -r requirements.txt
+```
+
+### 4. Launch the Game
+
+Start the Gradio interface:
+
+```bash
+uv run app.py
+```
+
+*(Alternatively, in Git Bash run `./run.sh`, or on Windows Command Prompt run `run.bat`)*
+
+Then open **`http://127.0.0.1:7860`** in your browser!
+
+---
+
+## 🎮 How It Works
+
+1. **Select Players**: Choose the LLM model for the **Black Player** (moves first) and the **White Player**.
+2. **Next Move**: Advance the game turn-by-turn to inspect what each model is thinking.
+3. **Run Game**: Automatically play through the full match until game over.
+4. **Leaderboard**: Switch to the **Leaderboard** tab to view match history and updated ELO rankings.
+
+---
+
+## 📁 Project Structure
+
+```
+├── arena/
+│   ├── board.py           # 8x8 Othello engine, flip logic & game state
+│   ├── board_view.py      # Interactive SVG renderer with 3D disc styling
+│   ├── game.py            # Game runner and player controller
+│   ├── llm.py             # Ollama local model interface (OpenAI compatible)
+│   ├── othello.py         # Gradio arena UI & event handlers
+│   ├── player.py          # Prompt engineering & structured JSON parser
+│   └── record.py          # Results logging & ELO calculation
+├── app.py                 # Application entry point
+├── pyproject.toml         # uv project configuration
+├── requirements.txt       # Dependencies
+├── run.sh                 # Git Bash launcher
+├── run.bat                # Windows batch launcher
+└── test_othello.py        # Automated test suite (15 tests)
+```
+
+---
+
+## 🧪 Testing
+
+Run the automated test suite to verify board mechanics, flips, and move parsing:
+
+```bash
+uv run python test_othello.py
+```
+
+---
+
+## 🙏 Acknowledgments
+
+Built on top of the Connect 4 LLM Arena created by [Ed Donner](https://github.com/ed-donner) as part of his LLM Engineering course. This project extends the original arena to support full Othello (Reversi) rules and gameplay.
