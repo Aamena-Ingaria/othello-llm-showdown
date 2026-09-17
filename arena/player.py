@@ -1,8 +1,11 @@
 from arena.llm import LLM
-from arena.board import pieces, cols
+from arena.board import pieces, cols, rows, BLACK, WHITE
 import json
 import random
 import logging
+import re
+
+logger = logging.getLogger(__name__)
 
 
 class Player:
@@ -27,69 +30,58 @@ class Player:
         """
         Return the system prompt for this move
         """
-        return f"""You are playing the board game Connect 4.
-Players take turns to drop counters into one of 7 columns A, B, C, D, E, F, G.
-The winner is the first player to get 4 counters in a row in any direction.
-You are {pieces[self.color]} and your opponent is {pieces[self.color * -1]}.
-You must pick a column for your move. You must pick one of the following legal moves: {legal_moves}.
-You should respond in JSON according to this spec:
+        my_color = pieces[self.color]
+        opponent_color = pieces[-1 * self.color]
+        return f"""You are a grandmaster playing the board game Othello (Reversi).
+The game is played on an 8x8 board with columns A to H and rows 1 to 8.
+A move is made by placing a disc of your color on an empty square to outflank (trap) one or more opponent discs in any straight line (horizontal, vertical, or diagonal) between your newly placed disc and another disc of your color. All trapped opponent discs flip to your color.
+You are playing as {my_color} and your opponent is {opponent_color}.
+You must choose a move from the list of legal moves: {legal_moves}. If no legal moves are available, respond with PASS.
 
+You must respond in JSON strictly according to this spec:
 {{
-    "evaluation": "my assessment of the board",
-    "threats": "any threats from my opponent that I should block",
-    "opportunities": "my best chances to win",
-    "strategy": "my thought process",
-    "move_column": "one letter from this list of legal moves: {legal_moves}"
+    "evaluation": "my assessment of the board position and material/positional control",
+    "threats": "opponent corners, dangerous moves, or vulnerabilities to watch out for",
+    "opportunities": "potential corner takes, stable discs, edge control, or high-value flips",
+    "strategy": "my tactical calculation and reasoning behind my move",
+    "move": "one coordinate from this list of legal moves: {legal_moves}"
 }}
 
-You must pick one of these letters for your move_column: {legal_moves}{illegal_moves}"""
+You must pick one of these exact moves for your move: {legal_moves}"""
 
     def user(self, board, legal_moves: str, illegal_moves: str) -> str:
         """
         Return the user prompt for this move
         """
-        return f"""It is your turn to make a move as {pieces[self.color]}.
-Here is the current board, with row 1 at the bottom of the board:
+        my_color = pieces[self.color]
+        opponent_color = pieces[-1 * self.color]
+        black_count, white_count = board.score()
 
+        sample_choice = random.choice(board.legal_moves()) if board.legal_moves() else "PASS"
+
+        return f"""It is your turn to make a move as {my_color}.
+Current Score: Black: {black_count} | White: {white_count}
+
+Here is the current board in JSON format (Row 1 at top, Row 8 at bottom):
 {board.json()}
 
-Here's another way of looking at the board visually, where R represents a red counter, Y for a yellow counter, and _ represents an empty square.
-
+Visual representation of the board (. = empty, B = Black, W = White):
 {board.alternative()}
 
-Your final response should be only in JSON strictly according to this spec:
+Legal moves available to you:
+{legal_moves}
+{illegal_moves}
 
+Your final response must be ONLY valid JSON matching this schema:
 {{
     "evaluation": "my assessment of the board",
-    "threats": "any threats from my opponent that I should block",
-    "opportunities": "my best chances to win",
-    "strategy": "my thought process",
-    "move_column": "one of {legal_moves} which are the legal moves"
+    "threats": "opponent threats",
+    "opportunities": "opportunities and tactical targets",
+    "strategy": "my plan and reasoning",
+    "move": "{sample_choice}"
 }}
 
-For example, the following could be a response:
-
-{{
-    "evaluation": "the board is equally balanced but I have a slight advantage",
-    "threats": "my opponent has a threat but I can block it",
-    "opportunities": "I've developed several promising 3 in a row opportunities",
-    "strategy": "I must first block my opponent, then I can continue to develop",
-    "move_column": "{random.choice(board.legal_moves())}"
-}}
-
-And this is another example of a well formed response:
-
-{{
-    "evaluation": "although my opponent has more threats, I can win immediately",
-    "threats": "my opponent has several threats",
-    "opportunities": "I can immediately win the game by making a diagonal 4",
-    "strategy": "I will take the winning move",
-    "move_column": "{random.choice(board.legal_moves())}"
-}}
-
-
-Now make your decision.
-You must pick one of these letters for your move_column: {legal_moves}{illegal_moves}
+Now make your decision. Pick one move from: {legal_moves}
 """
 
     def process_move(self, reply: str, board):
@@ -97,22 +89,51 @@ You must pick one of these letters for your move_column: {legal_moves}{illegal_m
         Interpret the reply and make the move; if the move is illegal, then the current player loses
         """
         try:
-            if len(reply) == 3 and reply[0] == "{" and reply[2] == "}":
-                reply = f'{{"move_column": "{reply[1]}"}}'
+            # Extract JSON substring if wrapped in markdown or conversational text
+            json_match = re.search(r"\{.*\}", reply, re.DOTALL)
+            if json_match:
+                reply = json_match.group(0)
+
             result = json.loads(reply)
-            move = result.get("move_column") or "missing"
-            move = move.upper()
-            col = cols.find(move)
-            if not (0 <= col <= 6) or board.height(col) == 6:
-                raise ValueError("Illegal move")
-            board.move(col)
+
+            # Accept "move", "move_column", or "coordinate"
+            move = result.get("move") or result.get("move_column") or result.get("coordinate") or ""
+            move = str(move).strip().upper()
+
+            # Clean any trailing punctuation
+            move = move.strip(".,;:\"'")
+
+            # Handle PASS
+            if move == "PASS":
+                if not board.legal_moves(board.player):
+                    board.pass_turn()
+                    self.evaluation = result.get("evaluation") or ""
+                    self.threats = result.get("threats") or ""
+                    self.opportunities = result.get("opportunities") or ""
+                    self.strategy = result.get("strategy") or "Passed due to no legal moves."
+                    return
+                else:
+                    raise ValueError("Cannot pass when legal moves exist")
+
+            # Check if valid coordinate
+            coord = board.str_to_coord(move)
+            if coord is None:
+                raise ValueError(f"Invalid coordinate: '{move}'")
+
+            x, y = coord
+            if not board.is_legal_move(x, y, board.player):
+                raise ValueError(f"Illegal move {move} for player {pieces[board.player]}")
+
+            board.move(move)
+
             self.evaluation = result.get("evaluation") or ""
             self.threats = result.get("threats") or ""
             self.opportunities = result.get("opportunities") or ""
             self.strategy = result.get("strategy") or ""
+
         except Exception as e:
-            logging.error(f"Exception {e}")
-            logging.exception(e)
+            logger.error(f"Exception processing move: {e}")
+            logger.error(f"Raw reply was: {reply}")
             board.forfeit = True
             board.winner = -1 * board.player
 
@@ -120,28 +141,37 @@ You must pick one of these letters for your move_column: {legal_moves}{illegal_m
         """
         Have the underlying LLM make a move, and process the result
         """
-        legal_moves = ", ".join(board.legal_moves())
-        if illegal := board.illegal_moves():
-            illegal_moves = (
-                "\nYou must NOT make any of these moves which are ILLEGAL: "
-                + ", ".join(illegal)
+        legals = board.legal_moves(board.player)
+        if not legals:
+            # No legal moves available: pass turn
+            board.pass_turn()
+            self.evaluation = "No legal moves available."
+            self.strategy = "Passed turn to opponent."
+            return
+
+        legal_moves_str = ", ".join(legals)
+        illegal = board.illegal_moves(board.player)[:10]  # sample illegal moves for negative prompting
+        if illegal:
+            illegal_moves_str = (
+                "\nDo NOT choose any non-flanking squares such as: " + ", ".join(illegal)
             )
         else:
-            illegal_moves = ""
-        system = self.system(board, legal_moves, illegal_moves)
-        user = self.user(board, legal_moves, illegal_moves)
+            illegal_moves_str = ""
+
+        system = self.system(board, legal_moves_str, illegal_moves_str)
+        user = self.user(board, legal_moves_str, illegal_moves_str)
         reply = self.llm.send(system, user)
         self.process_move(reply, board)
 
-    def thoughts(self):
+    def thoughts(self) -> str:
         """
         Return HTML to describe the inner thoughts
         """
-        result = '<div style="text-align: left;font-size:14px"><br/>'
-        result += f"<b>Evaluation:</b><br/>{self.evaluation}<br/><br/>"
-        result += f"<b>Threats:</b><br/>{self.threats}<br/><br/>"
-        result += f"<b>Opportunities:</b><br/>{self.opportunities}<br/><br/>"
-        result += f"<b>Strategy:</b><br/>{self.strategy}"
+        result = '<div style="text-align: left; font-size: 14px; line-height: 1.5;"><br/>'
+        result += f"<b style='color:#38bdf8;'>Evaluation:</b><br/>{self.evaluation}<br/><br/>"
+        result += f"<b style='color:#f87171;'>Threats:</b><br/>{self.threats}<br/><br/>"
+        result += f"<b style='color:#4ade80;'>Opportunities:</b><br/>{self.opportunities}<br/><br/>"
+        result += f"<b style='color:#fbbf24;'>Strategy:</b><br/>{self.strategy}"
         result += "</div>"
         return result
 
@@ -149,4 +179,5 @@ You must pick one of these letters for your move_column: {legal_moves}{illegal_m
         """
         Change the underlying LLM to the new model
         """
+        self.model = new_model_name
         self.llm = LLM.create(new_model_name)

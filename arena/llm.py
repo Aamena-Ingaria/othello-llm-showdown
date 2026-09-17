@@ -1,14 +1,30 @@
 from abc import ABC
-from anthropic import Anthropic
-from openai import OpenAI
-from groq import Groq
+
+try:
+    from anthropic import Anthropic
+except ImportError:
+    Anthropic = None
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
 import logging
 from typing import Dict, Type, Self, List
 import os
 import time
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+except ImportError:
+    pass
 
-load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -123,17 +139,14 @@ class LLM(ABC):
     @classmethod
     def all_model_names(cls) -> List[str]:
         """
-        Return a list of all the model names supported.
-        Use the ones specified in the model_map, but also check if there's an env variable set that restricts the models
+        Return a list of all model names supported.
+        Returns only the requested local Ollama models (no paid API models).
         """
-        models = cls.all_supported_model_names()
         allowed = os.getenv("MODELS")
-        print(f"Allowed models: {allowed}")
         if allowed:
-            allowed_models = allowed.split(",")
-            return [model for model in allowed_models if model in models]
-        else:
-            return models
+            allowed_models = [m.strip() for m in allowed.split(",")]
+            return allowed_models
+        return ["llama3.2:3b", "llama3.2:1b", "qwen2.5-coder:7b", "qwen2.3-coder:7b"]
 
     @classmethod
     def create(cls, model_name: str, temperature: float = 0.5) -> Self:
@@ -151,14 +164,10 @@ class LLM(ABC):
 
 class Claude(LLM):
     """
-    A class to act as an interface to the remote AI, in this case Claude
+    Claude interface (disabled: paid API)
     """
 
-    model_names = [
-        "claude-opus-4-1-20250805",
-        "claude-sonnet-4-5",
-        "claude-haiku-4-5",
-    ]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -189,10 +198,10 @@ class Claude(LLM):
 
 class GPT(LLM):
     """
-    A class to act as an interface to the remote AI, in this case GPT
+    GPT interface (disabled: paid API)
     """
 
-    model_names = ["gpt-5", "gpt-5-mini", "gpt-5-nano"]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -275,14 +284,10 @@ class O3(LLM):
 
 class Gemini(LLM):
     """
-    A class to act as an interface to the remote AI, in this case Gemini
+    Gemini interface (disabled: paid API)
     """
 
-    model_names = [
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-pro",
-    ]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -298,36 +303,68 @@ class Gemini(LLM):
 
 class Ollama(LLM):
     """
-    A class to act as an interface to the remote AI, in this case Ollama via the OpenAI client
+    A class to act as an interface to local Ollama models (100% free, private & offline)
     """
 
-    model_names = ["llama3.2 local", "gemma2 local", "qwen2.5 local", "phi4 local"]
+    model_names = [
+        "llama3.2:3b",
+        "llama3.2:1b",
+        "qwen2.5-coder:7b",
+        "qwen2.3-coder:7b",
+    ]
 
-    def __init__(self, model_name: str, temperature: float):
+    def __init__(self, model_name: str, temperature: float = 0.2):
         """
-        Create a new instance of the OpenAI client for Ollama
+        Create a new instance of the client for Ollama
         """
         super().__init__(model_name, temperature)
-        self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        if OpenAI is not None:
+            self.client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        else:
+            self.client = None
+
+    def api_model_name(self) -> str:
+        name = self.model_name.split(" ")[0] if " " in self.model_name else self.model_name
+        # Seamlessly map user typo qwen2.3-coder to installed qwen2.5-coder
+        if name == "qwen2.3-coder:7b":
+            return "qwen2.5-coder:7b"
+        return name
 
     def _send(self, system: str, user: str, max_tokens: int = 3000) -> str:
         """
         Send a message to Ollama
-        :param system: the context in which this message is to be taken
-        :param user: the prompt
-        :param max_tokens: max number of tokens to generate
-        :return: the response from the AI
         """
+        model = self.api_model_name()
+        if self.client is not None:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                response_format={"type": "json_object"},
+            )
+            reply = response.choices[0].message.content
+        else:
+            import urllib.request
+            import json
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            req = urllib.request.Request(
+                "http://localhost:11434/v1/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                reply = data["choices"][0]["message"]["content"]
 
-        response = self.client.chat.completions.create(
-            model=self.api_model_name(),
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            response_format={"type": "json_object"},
-        )
-        reply = response.choices[0].message.content
         if "</think>" in reply:
             logging.info("Thoughts:\n" + reply.split("</think>")[0].replace("<think>", ""))
             reply = reply.split("</think>")[1]
@@ -336,10 +373,10 @@ class Ollama(LLM):
 
 class DeepSeekAPI(LLM):
     """
-    A class to act as an interface to the remote AI, in this case DeepSeek via the OpenAI client
+    DeepSeek API interface (disabled: paid API)
     """
 
-    model_names = ["deepseek-chat V3", "deepseek-reasoner R1"]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """
@@ -390,12 +427,10 @@ class DeepSeekLocal(LLM):
 
 class GroqAPI(LLM):
     """
-    A class to act as an interface to the remote AI, in this case Groq
+    Groq API interface (disabled: paid API)
     """
 
-    model_names = [
-        "openai/gpt-oss-120b via Groq",
-    ]
+    model_names = []
 
     def __init__(self, model_name: str, temperature: float):
         """

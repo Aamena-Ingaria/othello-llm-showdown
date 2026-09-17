@@ -1,0 +1,23 @@
+[project]
+name = "othello-arena"
+version = "0.1.0"
+description = "Arena for playing Othello (Reversi) between local Ollama LLMs"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gradio>=5.15.0",
+    "pandas>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.0.0",
+    "pymongo>=4.0.0",
+    "anthropic",
+    "google-generativeai",
+    "groq",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "jupyterlab",
+    "ipywidgets",
+]

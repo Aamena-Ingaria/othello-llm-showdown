@@ -1,24 +1,40 @@
-from arena.board import Board, RED, YELLOW
+from arena.board import Board, BLACK, WHITE, RED, YELLOW
 from arena.player import Player
 from arena.record import get_games, Result, record_game, ratings
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from arena.llm import LLM
 
 
 class Game:
     """
-    A Game consists of a Board and 2 players
+    A Game consists of an 8x8 Othello Board and 2 AI players
     """
 
-    def __init__(self, model_red: str, model_yellow: str):
+    def __init__(
+        self,
+        model_black: Optional[str] = None,
+        model_white: Optional[str] = None,
+        # Backwards compatibility parameters
+        model_red: Optional[str] = None,
+        model_yellow: Optional[str] = None,
+    ):
         """
         Initialize this Game; a new board, and new Player objects
         """
+        black_model = model_black or model_red or LLM.all_model_names()[0]
+        white_model = model_white or model_yellow or LLM.all_model_names()[1]
+
         self.board = Board()
+        black_player = Player(black_model, BLACK)
+        white_player = Player(white_model, WHITE)
+
         self.players = {
-            RED: Player(model_red, RED),
-            YELLOW: Player(model_yellow, YELLOW),
+            BLACK: black_player,
+            WHITE: white_player,
+            # Backwards compatibility keys
+            RED: black_player,
+            YELLOW: white_player,
         }
 
     def reset(self):
@@ -31,22 +47,26 @@ class Game:
         """
         Make the next move. Delegate to the current player to make a move on this board.
         """
-        self.players[self.board.player].move(self.board)
+        if not self.is_active():
+            return
+
+        current_player = self.players[self.board.player]
+        current_player.move(self.board)
 
     def is_active(self) -> bool:
         """
-        Return true if the game hasn't yet ended
+        Return True if the game hasn't yet ended
         """
         return self.board.is_active()
 
-    def thoughts(self, player) -> str:
+    def thoughts(self, player: int) -> str:
         """
         Return the inner thoughts of the given player
         """
         return self.players[player].thoughts()
 
     @staticmethod
-    def get_games() -> List:
+    def get_games() -> List[Result]:
         """
         Return all the games stored in the db
         """
@@ -67,11 +87,21 @@ class Game:
         """
         Store the results of this game in the DB
         """
-        red_player = self.players[RED].llm.model_name
-        yellow_player = self.players[YELLOW].llm.model_name
-        red_won = self.board.winner == RED
-        yellow_won = self.board.winner == YELLOW
-        result = Result(red_player, yellow_player, red_won, yellow_won, datetime.now())
+        black_player = self.players[BLACK].llm.model_name
+        white_player = self.players[WHITE].llm.model_name
+        black_won = self.board.winner == BLACK
+        white_won = self.board.winner == WHITE
+        black_score, white_score = self.board.score()
+
+        result = Result(
+            black_player=black_player,
+            white_player=white_player,
+            black_won=black_won,
+            white_won=white_won,
+            black_score=black_score,
+            white_score=white_score,
+            when=datetime.now(),
+        )
         record_game(result)
 
     def run(self):

@@ -1,5 +1,5 @@
 from arena.game import Game
-from arena.board import RED, YELLOW
+from arena.board import BLACK, WHITE
 from arena.llm import LLM
 import gradio as gr
 import pandas as pd
@@ -10,7 +10,7 @@ css = """
     min-height: 800px;
     max-height: 800px;
 }
-footer{display:none !important}
+footer { display: none !important; }
 """
 
 js = """
@@ -31,7 +31,7 @@ def message_html(game) -> str:
     """
     Return the message for the top of the UI
     """
-    return f'<div style="text-align: center;font-size:18px">{game.board.message()}</div>'
+    return f'<div style="text-align: center; font-size: 20px; font-weight: 600; padding: 6px; letter-spacing: 0.3px;">{game.board.message()}</div>'
 
 
 def format_records_for_table(games):
@@ -42,17 +42,18 @@ def format_records_for_table(games):
         [
             [
                 game.when,
-                game.red_player,
-                game.yellow_player,
-                "Red" if game.red_won else "Yellow" if game.yellow_won else "Draw",
+                getattr(game, "black_player", getattr(game, "red_player", "")),
+                getattr(game, "white_player", getattr(game, "yellow_player", "")),
+                "Black" if getattr(game, "black_won", getattr(game, "red_won", False)) else "White" if getattr(game, "white_won", getattr(game, "yellow_won", False)) else "Draw",
+                f"{getattr(game, 'black_score', '-')}:{getattr(game, 'white_score', '-')}",
             ]
             for game in reversed(games)
         ],
-        columns=["When", "Red Player", "Yellow Player", "Winner"],
+        columns=["When", "Black Player", "White Player", "Winner", "Score"],
     )
 
-    # Remove microseconds while preserving datetime format
-    df["When"] = pd.to_datetime(df["When"]).dt.floor("s")
+    if not df.empty and "When" in df.columns:
+        df["When"] = pd.to_datetime(df["When"]).dt.floor("s")
 
     return df
 
@@ -65,11 +66,11 @@ def format_ratings_for_table(ratings):
     return [[item[0], int(round(item[1]))] for item in items]
 
 
-def load_callback(red_llm, yellow_llm):
+def load_callback(black_llm, white_llm):
     """
     Callback called when the game is started. Create a new Game object for the state.
     """
-    game = Game(red_llm, yellow_llm)
+    game = Game(black_llm, white_llm)
     enabled = gr.Button(interactive=True)
     message = message_html(game)
     return (
@@ -104,8 +105,8 @@ def move_callback(game):
         game,
         game.board.svg(),
         message,
-        game.thoughts(RED),
-        game.thoughts(YELLOW),
+        game.thoughts(BLACK),
+        game.thoughts(WHITE),
         if_active,
         if_active,
     )
@@ -124,8 +125,8 @@ def run_callback(game):
         game,
         game.board.svg(),
         message,
-        game.thoughts(RED),
-        game.thoughts(YELLOW),
+        game.thoughts(BLACK),
+        game.thoughts(WHITE),
         disabled,
         disabled,
         disabled,
@@ -137,8 +138,8 @@ def run_callback(game):
             game,
             game.board.svg(),
             message,
-            game.thoughts(RED),
-            game.thoughts(YELLOW),
+            game.thoughts(BLACK),
+            game.thoughts(WHITE),
             disabled,
             disabled,
             disabled,
@@ -148,47 +149,47 @@ def run_callback(game):
         game,
         game.board.svg(),
         message,
-        game.thoughts(RED),
-        game.thoughts(YELLOW),
+        game.thoughts(BLACK),
+        game.thoughts(WHITE),
         disabled,
         disabled,
         enabled,
     )
 
 
-def model_callback(player_name, game, new_model_name):
+def model_callback(player_color, game, new_model_name):
     """
     Callback when the user changes the model
     """
-    player = game.players[player_name]
+    player = game.players[player_color]
     player.switch_model(new_model_name)
     return game
 
 
-def red_model_callback(game, new_model_name):
+def black_model_callback(game, new_model_name):
     """
-    Callback when red model is changed
+    Callback when Black model is changed
     """
-    return model_callback(RED, game, new_model_name)
+    return model_callback(BLACK, game, new_model_name)
 
 
-def yellow_model_callback(game, new_model_name):
+def white_model_callback(game, new_model_name):
     """
-    Callback when yellow model is changed
+    Callback when White model is changed
     """
-    return model_callback(YELLOW, game, new_model_name)
+    return model_callback(WHITE, game, new_model_name)
 
 
-def player_section(name, default):
+def player_section(name, color_symbol, default):
     """
     Create the left and right sections of the UI
     """
     with gr.Row():
-        gr.HTML(f'<div style="text-align: center;font-size:18px">{name} Player</div>')
+        gr.HTML(f'<div style="text-align: center; font-size: 19px; font-weight: bold; padding: 4px;">{color_symbol} {name} Player</div>')
     with gr.Row():
-        dropdown = gr.Dropdown(ALL_MODEL_NAMES, value=default, label="LLM", interactive=True)
+        dropdown = gr.Dropdown(ALL_MODEL_NAMES, value=default, label=f"{name} LLM", interactive=True)
     with gr.Row():
-        gr.HTML('<div style="text-align: center;font-size:16px">Inner thoughts</div>')
+        gr.HTML('<div style="text-align: center; font-size: 16px; font-weight: 600; color: #94a3b8; margin-top: 8px;">Inner thoughts</div>')
     with gr.Row():
         thoughts = gr.HTML(label="Thoughts")
     return thoughts, dropdown
@@ -196,13 +197,13 @@ def player_section(name, default):
 
 def make_display():
     """
-    The Gradio UI to show the Game, with event handlers
+    The Gradio UI to show the Othello Game, with event handlers
     """
     with gr.Blocks(
-        title="C4 Battle",
+        title="Othello Battle",
         css=css,
         js=js,
-        theme=gr.themes.Default(primary_hue="sky"),
+        theme=gr.themes.Default(primary_hue="emerald"),
     ) as blocks:
         game = gr.State()
 
@@ -210,72 +211,73 @@ def make_display():
             with gr.TabItem("Game"):
                 with gr.Row():
                     gr.HTML(
-                        '<div style="text-align: center;font-size:24px">Four-in-a-row LLM Showdown</div>'
+                        '<div style="text-align: center; font-size: 26px; font-weight: 800; padding: 10px; letter-spacing: 0.5px;">⚔️ Othello (Reversi) LLM Showdown</div>'
                     )
                 with gr.Row():
                     with gr.Column(scale=1):
-                        red_thoughts, red_dropdown = player_section("Red", ALL_MODEL_NAMES[0])
+                        black_thoughts, black_dropdown = player_section("Black", "⚫", ALL_MODEL_NAMES[0])
                     with gr.Column(scale=2):
                         with gr.Row():
                             message = gr.HTML(
-                                '<div style="text-align: center;font-size:18px">The Board</div>'
+                                '<div style="text-align: center; font-size: 18px">The Board</div>'
                             )
                         with gr.Row():
                             board_display = gr.HTML()
                         with gr.Row():
                             with gr.Column(scale=1):
-                                move_button = gr.Button("Next move")
+                                move_button = gr.Button("Next move", variant="secondary")
                             with gr.Column(scale=1):
                                 run_button = gr.Button("Run game", variant="primary")
                             with gr.Column(scale=1):
                                 reset_button = gr.Button("Start Over", variant="stop")
                         with gr.Row():
                             gr.HTML(
-                                '<div style="text-align: center;font-size:16px">See the <a href="https://youtu.be/0OF-ChlKOQY">video walkthrough</a> of the code and <a href="https://github.com/ed-donner/connect">clone</a> the repo</div>'
+                                '<div style="text-align: center; font-size: 15px; color: #10b981; font-weight: 500; margin-top: 10px;">🦙 Powered by Local Ollama Models · 100% Free, Private &amp; Offline</div>'
                             )
 
                     with gr.Column(scale=1):
-                        yellow_thoughts, yellow_dropdown = player_section(
-                            "Yellow", ALL_MODEL_NAMES[1]
+                        default_white = ALL_MODEL_NAMES[1] if len(ALL_MODEL_NAMES) > 1 else ALL_MODEL_NAMES[0]
+                        white_thoughts, white_dropdown = player_section(
+                            "White", "⚪", default_white
                         )
             with gr.TabItem("Leaderboard") as leaderboard_tab:
                 with gr.Row():
                     with gr.Column(scale=1):
                         ratings_df = gr.Dataframe(
                             headers=["Player", "ELO"],
-                            label="Ratings (recent models only)",
+                            label="Ratings",
                             column_widths=[2, 1],
                             wrap=True,
-                            col_count=2,
+                            column_count=2,
                             row_count=10,
                             max_height=800,
                             elem_classes=["dataframe-fix"],
                         )
                     with gr.Column(scale=2):
                         results_df = gr.Dataframe(
-                            headers=["When", "Red Player", "Yellow Player", "Winner"],
+                            headers=["When", "Black Player", "White Player", "Winner", "Score"],
                             label="Game History",
-                            column_widths=[2, 2, 2, 1],
+                            column_widths=[2, 2, 2, 1, 1],
                             wrap=True,
-                            col_count=4,
+                            column_count=5,
                             row_count=10,
                             max_height=800,
                             elem_classes=["dataframe-fix"],
                         )
                 with gr.Row():
                     gr.HTML(
-                        '<div style="text-align: center;font-size:16px">See the <a href="https://youtu.be/0OF-ChlKOQY">video walkthrough</a> of the code and <a href="https://github.com/ed-donner/connect">clone</a> the repo</div>'
+                        '<div style="text-align: center; font-size: 15px; color: #64748b; margin-top: 10px;">Classic 8x8 Othello (Reversi) Arena Leaderboard</div>'
                     )
 
         blocks.load(
             load_callback,
-            inputs=[red_dropdown, yellow_dropdown],
+            inputs=[black_dropdown, white_dropdown],
             outputs=[
                 game,
                 board_display,
                 message,
-                red_thoughts,
-                yellow_thoughts,
+                black_thoughts,
+                white_thoughts,
                 move_button,
                 run_button,
                 reset_button,
@@ -288,15 +290,15 @@ def make_display():
                 game,
                 board_display,
                 message,
-                red_thoughts,
-                yellow_thoughts,
+                black_thoughts,
+                white_thoughts,
                 move_button,
                 run_button,
             ],
         )
-        red_dropdown.change(red_model_callback, inputs=[game, red_dropdown], outputs=[game])
-        yellow_dropdown.change(
-            yellow_model_callback, inputs=[game, yellow_dropdown], outputs=[game]
+        black_dropdown.change(black_model_callback, inputs=[game, black_dropdown], outputs=[game])
+        white_dropdown.change(
+            white_model_callback, inputs=[game, white_dropdown], outputs=[game]
         )
         run_button.click(
             run_callback,
@@ -305,8 +307,8 @@ def make_display():
                 game,
                 board_display,
                 message,
-                red_thoughts,
-                yellow_thoughts,
+                black_thoughts,
+                white_thoughts,
                 move_button,
                 run_button,
                 reset_button,
@@ -314,13 +316,13 @@ def make_display():
         )
         reset_button.click(
             load_callback,
-            inputs=[red_dropdown, yellow_dropdown],
+            inputs=[black_dropdown, white_dropdown],
             outputs=[
                 game,
                 board_display,
                 message,
-                red_thoughts,
-                yellow_thoughts,
+                black_thoughts,
+                white_thoughts,
                 move_button,
                 run_button,
                 reset_button,
